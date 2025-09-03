@@ -91,6 +91,5 @@ def start_aiogram_bot():
     asyncio.run(wrapper())
 
 if __name__ == "__main__":
+    import threading
     threading.Thread(target=start_aiogram_bot, daemon=True).start()
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", 8000)))
