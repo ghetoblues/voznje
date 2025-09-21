@@ -1,1 +1,1 @@
-worker: python voznje/main.py
+worker: python main.py
