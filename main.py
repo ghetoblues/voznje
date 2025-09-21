@@ -4,106 +4,84 @@ import re
 from datetime import datetime
 
 import requests
-from aiogram import Bot as AioBot
+from aiogram import Bot
+
+TOKEN_VOZNJE = os.environ["TOKEN_VOZNJE"]
+CHANNEL_ID_VOZNJE = os.environ["CHANNEL_ID_VOZNJE"]
+API_URL = os.environ["API_URL"]
+GITHUB_GIST_ID = os.environ["GITHUB_GIST_ID"]
+GITHUB_GIST_FILENAME = os.environ["GITHUB_GIST_FILENAME"]
+GITHUB_TOKEN = os.environ["GITHUB_TOKEN"]
 
 
-TOKEN_VOZNJE = os.getenv("TOKEN_VOZNJE")
-if not TOKEN_VOZNJE:
-    raise RuntimeError("Environment variable TOKEN_VOZNJE is required")
-
-CHANNEL_ID_VOZNJE = os.getenv("CHANNEL_ID_VOZNJE")
-API_URL = "https://www.srbvoz.rs/wp-json/wp/v2/info_post?per_page=100"
-LAST_ID_FILE = os.getenv("LAST_ID_FILE")
-RESEND_LATEST_ON_START = os.getenv("RESEND_LATEST_ON_START", "false").lower() == "true"
+def gist_headers() -> dict:
+    return {
+        "Authorization": f"Bearer {GITHUB_TOKEN}",
+        "Accept": "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+    }
 
 
-def read_last_sent_id():
-    try:
-        with open(LAST_ID_FILE, "r", encoding="utf-8") as file:
-            return int(file.read().strip())
-    except Exception:
-        return None
+def get_last_id_from_gist() -> int:
+    url = f"https://api.github.com/gists/{GITHUB_GIST_ID}"
+    response = requests.get(url, headers=gist_headers(), timeout=10)
+    response.raise_for_status()
+    files = response.json()["files"]
+    content = files[GITHUB_GIST_FILENAME]["content"].strip()
+    return int(content) if content else 0
 
 
-def write_last_sent_id(last_id: int) -> None:
-    with open(LAST_ID_FILE, "w", encoding="utf-8") as file:
-        file.write(str(last_id))
+def update_gist(last_id: int) -> None:
+    url = f"https://api.github.com/gists/{GITHUB_GIST_ID}"
+    payload = {
+        "files": {
+            GITHUB_GIST_FILENAME: {
+                "content": str(last_id),
+            }
+        }
+    }
+    response = requests.patch(url, headers=gist_headers(), json=payload, timeout=10)
+    response.raise_for_status()
 
 
-def get_news_from_api():
-    try:
-        response = requests.get(API_URL, timeout=10)
-        if response.status_code != 200:
-            return []
+def fetch_news() -> list[dict]:
+    response = requests.get(API_URL, timeout=10)
+    response.raise_for_status()
+    data = response.json()
 
-        data = response.json()
-        news = []
-        for item in data:
-            published_raw = item.get("date", "")
-            published_dt = None
-            try:
-                published_dt = datetime.fromisoformat(published_raw)
-            except ValueError:
-                pass
-
-            if published_dt:
-                date_display = published_dt.strftime("%d.%m.%Y")
-                time_display = published_dt.strftime("%H:%M:%S")
-            else:
-                parts = published_raw.split("T") if published_raw else ["", ""]
-                date_display = parts[0]
-                time_display = parts[1] if len(parts) > 1 else ""
-
-            news.append(
-                {
-                    "id": item["id"],
-                    "date_iso": published_raw,
-                    "date": date_display,
-                    "time": time_display,
-                    "title": item["title"]["rendered"],
-                    "text": re.sub(r"<.*?>", "", item["content"]["rendered"]),
-                }
-            )
-        return news
-    except Exception as exc:
-        print(f"API Error: {exc}")
-        return []
+    news = []
+    for item in data:
+        published = datetime.fromisoformat(item["date"])
+        text = re.sub(r"<.*?>", "", item["content"]["rendered"])
+        news.append(
+            {
+                "id": item["id"],
+                "timestamp": published.strftime("%d.%m.%Y %H:%M:%S"),
+                "title": item["title"]["rendered"],
+                "text": text,
+            }
+        )
+    return sorted(news, key=lambda x: x["id"])
 
 
-async def send_latest_news(bot: AioBot) -> None:
-    last_sent_id = read_last_sent_id()
-    news = get_news_from_api()
-    if not news:
+async def send_updates(bot: Bot) -> None:
+    last_sent_id = await asyncio.to_thread(get_last_id_from_gist)
+    news_items = await asyncio.to_thread(fetch_news)
+    new_items = [item for item in news_items if item["id"] > last_sent_id]
+    if not new_items:
         return
 
-    if last_sent_id is not None:
-        new_news = [n for n in news if n["id"] > last_sent_id]
-    else:
-        new_news = news
-
-    if not new_news and RESEND_LATEST_ON_START:
-        new_news = [news[0]]
-
-    if not new_news:
-        return
-
-    latest = new_news[0]
-    timestamp = latest["date"]
-    if latest.get("time"):
-        timestamp = f"{timestamp} {latest['time']}"
-
-    message = f"📅 {timestamp}\n📰 {latest['title']}\n\n{latest['text']}"
-    try:
+    for item in new_items:
+        message = f"📅 {item['timestamp']}\n📰 {item['title']}\n\n{item['text']}"
         await bot.send_message(CHANNEL_ID_VOZNJE, message, parse_mode="HTML")
-        write_last_sent_id(latest["id"])
-    except Exception as exc:
-        print(f"Send error: {exc}")
+
+    await asyncio.to_thread(update_gist, new_items[-1]["id"])
 
 
 async def main() -> None:
-    bot = AioBot(token=TOKEN_VOZNJE)
+    bot = Bot(token=TOKEN_VOZNJE)
     try:
-        await send_latest_news(bot)
+        await send_updates(bot)
     finally:
         await bot.session.close()
 
