@@ -1,15 +1,14 @@
-import asyncio
 import os
 import re
+import asyncio
 import requests
+from aiohttp import web
 from aiogram import Bot as AioBot
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
-from aiohttp import web  # <--- добавили
 
-# === VOZNJE APP ===
-TOKEN_VOZNJE = '8084953056:AAHgAlbN51iSWgNJLwJB4AJNfsIqHd-pO78'
-CHANNEL_ID_VOZNJE = '@muharedvoznje'
+TOKEN_VOZNJE = os.environ.get("TOKEN_VOZNJE")
+CHANNEL_ID_VOZNJE = os.environ.get("CHANNEL_ID_VOZNJE")
 bot_voznje = AioBot(token=TOKEN_VOZNJE)
 scheduler = AsyncIOScheduler()
 api_url = "https://www.srbvoz.rs/wp-json/wp/v2/info_post?per_page=100"
@@ -74,7 +73,7 @@ def start_polling_voznje():
 
 # === FAKE HTTP SERVER ===
 async def handle(request):
-    return web.Response(text="Bot is running!")
+    return web.Response(text="Voznje Bot is running!")
 
 def start_web_server():
     port = int(os.environ.get("PORT", 8000))
