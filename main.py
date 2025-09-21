@@ -14,7 +14,7 @@ if not TOKEN_VOZNJE:
 CHANNEL_ID_VOZNJE = os.getenv("CHANNEL_ID_VOZNJE")
 API_URL = "https://www.srbvoz.rs/wp-json/wp/v2/info_post?per_page=100"
 LAST_ID_FILE = os.getenv("LAST_ID_FILE")
-RESEND_LATEST_ON_START = os.getenv("RESEND_LATEST_ON_START", "true").lower() == "true"
+RESEND_LATEST_ON_START = os.getenv("RESEND_LATEST_ON_START", "false").lower() == "true"
 
 
 def read_last_sent_id():
