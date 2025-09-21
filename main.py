@@ -15,14 +15,14 @@ api_url = "https://www.srbvoz.rs/wp-json/wp/v2/info_post?per_page=100"
 
 def read_last_sent_id():
     try:
-        with open("last_sent_id.txt", "r") as file:
+        with open("list.txt", "r") as file:
             return int(file.read().strip())
     except:
         return None
 
 
 def write_last_sent_id(last_id):
-    with open("last_sent_id.txt", "w") as file:
+    with open("list.txt", "w") as file:
         file.write(str(last_id))
 
 
