@@ -1,93 +1,82 @@
+import asyncio
 import os
 import re
-import asyncio
+
 import requests
-from aiohttp import web
 from aiogram import Bot as AioBot
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from apscheduler.triggers.interval import IntervalTrigger
 
-TOKEN_VOZNJE = os.environ.get("TOKEN_VOZNJE")
-CHANNEL_ID_VOZNJE = os.environ.get("CHANNEL_ID_VOZNJE")
-bot_voznje = AioBot(token=TOKEN_VOZNJE)
-scheduler = AsyncIOScheduler()
-api_url = "https://www.srbvoz.rs/wp-json/wp/v2/info_post?per_page=100"
 
-# === LAST ID ===
+TOKEN_VOZNJE = os.getenv("TOKEN_VOZNJE")
+if not TOKEN_VOZNJE:
+    raise RuntimeError("Environment variable TOKEN_VOZNJE is required")
+
+CHANNEL_ID_VOZNJE = os.getenv("CHANNEL_ID_VOZNJE", "@muharedvoznje")
+API_URL = "https://www.srbvoz.rs/wp-json/wp/v2/info_post?per_page=100"
+LAST_ID_FILE = os.getenv("LAST_ID_FILE", "list.txt")
+
+
 def read_last_sent_id():
     try:
-        with open("list.txt", "r") as file:
+        with open(LAST_ID_FILE, "r", encoding="utf-8") as file:
             return int(file.read().strip())
-    except:
+    except Exception:
         return None
 
-def write_last_sent_id(last_id):
-    with open("list.txt", "w") as file:
+
+def write_last_sent_id(last_id: int) -> None:
+    with open(LAST_ID_FILE, "w", encoding="utf-8") as file:
         file.write(str(last_id))
 
-last_sent_id = read_last_sent_id()
 
-# === FETCH NEWS ===
 def get_news_from_api():
     try:
-        response = requests.get(api_url)
+        response = requests.get(API_URL, timeout=10)
         if response.status_code != 200:
             return []
 
         data = response.json()
         news = []
         for item in data:
-            news.append({
-                "id": item["id"],
-                "date": item["date"].split("T")[0],
-                "title": item["title"]["rendered"],
-                "text": re.sub(r"<.*?>", "", item["content"]["rendered"]),
-            })
+            news.append(
+                {
+                    "id": item["id"],
+                    "date": item["date"].split("T")[0],
+                    "title": item["title"]["rendered"],
+                    "text": re.sub(r"<.*?>", "", item["content"]["rendered"]),
+                }
+            )
         return news
-    except Exception as e:
-        print(f"API Error: {e}")
+    except Exception as exc:
+        print(f"API Error: {exc}")
         return []
 
-# === SEND TO TELEGRAM ===
-async def send_news():
-    global last_sent_id
+
+async def send_latest_news(bot: AioBot) -> None:
+    last_sent_id = read_last_sent_id()
     news = get_news_from_api()
-    if news:
-        new_news = [n for n in news if n["id"] > last_sent_id] if last_sent_id else news
-        if new_news:
-            latest = new_news[0]
-            msg = f"📅 {latest['date']}\n📰 {latest['title']}\n\n{latest['text']}"
-            try:
-                await bot_voznje.send_message(CHANNEL_ID_VOZNJE, msg, parse_mode="HTML")
-                last_sent_id = latest["id"]
-                write_last_sent_id(last_sent_id)
-            except Exception as e:
-                print(f"Send error: {e}")
+    if not news:
+        return
 
-# === SCHEDULER ===
-def start_polling_voznje():
-    scheduler.add_job(
-        send_news, IntervalTrigger(minutes=5), id="news_polling", replace_existing=True
-    )
-    scheduler.start()
+    new_news = [n for n in news if last_sent_id and n["id"] > last_sent_id]
+    if not new_news and last_sent_id is None:
+        new_news = news
 
-# === FAKE HTTP SERVER ===
-async def handle(request):
-    return web.Response(text="Voznje Bot is running!")
+    if not new_news:
+        return
 
-def start_web_server():
-    port = int(os.environ.get("PORT", 8000))
-    app = web.Application()
-    app.router.add_get("/", handle)
-    return web._run_app(app, port=port)
+    latest = new_news[0]
+    message = f"📅 {latest['date']}\n📰 {latest['title']}\n\n{latest['text']}"
+    try:
+        await bot.send_message(CHANNEL_ID_VOZNJE, message, parse_mode="HTML")
+        write_last_sent_id(latest["id"])
+    except Exception as exc:
+        print(f"Send error: {exc}")
 
-# === MAIN ENTRY ===
-async def main():
-    await send_news()
-    start_polling_voznje()
-    web_server = asyncio.create_task(start_web_server())  # <-- запуск фиктивного сервера
-    while True:
-        await asyncio.sleep(3600)
+
+async def main() -> None:
+    async with AioBot(token=TOKEN_VOZNJE) as bot:
+        await send_latest_news(bot)
+
 
 if __name__ == "__main__":
     asyncio.run(main())
