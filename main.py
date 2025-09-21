@@ -10,9 +10,9 @@ TOKEN_VOZNJE = os.getenv("TOKEN_VOZNJE")
 if not TOKEN_VOZNJE:
     raise RuntimeError("Environment variable TOKEN_VOZNJE is required")
 
-CHANNEL_ID_VOZNJE = os.getenv("CHANNEL_ID_VOZNJE", "@muharedvoznje")
+CHANNEL_ID_VOZNJE = os.getenv("CHANNEL_ID_VOZNJE")
 API_URL = "https://www.srbvoz.rs/wp-json/wp/v2/info_post?per_page=100"
-LAST_ID_FILE = os.getenv("LAST_ID_FILE", "list.txt")
+LAST_ID_FILE = os.getenv("LAST_ID_FILE")
 
 
 def read_last_sent_id():
