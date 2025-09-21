@@ -101,8 +101,11 @@ async def send_latest_news(bot: AioBot) -> None:
 
 
 async def main() -> None:
-    async with AioBot(token=TOKEN_VOZNJE) as bot:
+    bot = AioBot(token=TOKEN_VOZNJE)
+    try:
         await send_latest_news(bot)
+    finally:
+        await bot.session.close()
 
 
 if __name__ == "__main__":
