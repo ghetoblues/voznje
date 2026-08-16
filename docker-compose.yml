@@ -1,0 +1,14 @@
+services:
+  bot:
+    build: .
+    restart: always
+    mem_limit: 128m
+    env_file:
+      - .env
+    environment:
+      TZ: Europe/Belgrade
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
